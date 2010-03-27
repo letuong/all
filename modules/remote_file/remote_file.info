@@ -1,0 +1,14 @@
+name = "Remote File"
+description = "Put a remote file into Drupals file system"
+package = File System
+dependencies[] = link
+dependencies[] = imagefield
+dependencies[] = filefield
+core = 6.x
+php = 5.x
+; Information added by drupal.org packaging script on 2009-03-15
+version = "6.x-1.x-dev"
+core = "6.x"
+project = "remote_file"
+datestamp = "1237076209"
+

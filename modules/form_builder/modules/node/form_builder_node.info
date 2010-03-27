@@ -1,0 +1,12 @@
+; $Id: form_builder_node.info,v 1.1 2009/01/16 23:06:08 quicksketch Exp $
+name = Form builder Node UI
+description = Form builder enhancements for node module.
+core = 6.x
+dependencies[] = form_builder
+
+; Information added by drupal.org packaging script on 2009-06-20
+version = "6.x-0.6"
+core = "6.x"
+project = "form_builder"
+datestamp = "1245540038"
+

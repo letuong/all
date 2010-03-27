@@ -1,0 +1,8 @@
+; $Id: book.info,v 1.5 2007/07/30 18:20:21 dries Exp $
+name = Taxonomy CSS
+description = Allow user to add custom CSS for each taxonomy term.
+package = Lee's Group
+version = VERSION
+core = 6.x
+version = "6.15"
+project = taxonomy_css

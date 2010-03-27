@@ -1,0 +1,161 @@
+<?php
+
+// $Id: history_rec.module,v 1.1.2.1 2009/09/21 19:17:12 danithaca Exp $
+
+/**
+ * @see http://drupal.org/project/history_rec
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function history_rec_help($path, $args) {
+  $output = '';
+  switch ($path) {
+    case "admin/help#history_rec":
+      $output = '<p>'.  t("This module generates node recommendations based on user browsing history") .'</p>';
+      break;
+  }
+  return $output;
+}
+
+
+/**
+ * Implementation of hook_perm().
+ */
+function history_rec_perm() {
+  $perm = array(
+    "administer recommender",
+  );
+  return $perm;
+}
+
+
+/**
+ * Implementation of hook_menu().
+ */
+function history_rec_menu() {
+  $items = array();
+  $items['admin/settings/history_rec'] = array(
+    'title' => t('Browsing history recommender'),
+    'description' => 'Configuration and adjusts of recommender based on node browsing history',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('history_rec_settings_form'),
+    'access arguments' => array('administer recommender'),
+    'file' => 'history_rec.admin.inc',
+   );
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_block()
+ */
+function history_rec_block($op='list', $delta=0) {
+  if ($op == 'list') {
+    $block[0]['info'] = t('Browsing history recommender: related nodes');
+    $block[1]['info'] = t('Browsing history recommender: recommended nodes');
+    return $block;
+  }
+  else if ($op == 'view') {
+    $block = array();
+
+    if ($delta == 0) {
+      if ($node = menu_get_object()) {
+        $items = history_rec_related($node->nid);
+        if (!empty($items)) {
+          $block['subject'] = t('Users who browsed this item also browsed');
+          $block['content'] = theme('item_list', $items);
+        }
+      }
+    } elseif ($delta == 1) {
+      global $user;
+      $items = history_rec_recommended($user->uid);
+      if (!empty($items)) {
+        $block['subject'] = t('Recommended for you');
+        $block['content'] = theme('item_list', $items);
+      }
+    }
+
+    return $block;
+  }
+}
+
+
+function _history_rec_format_node($item) {
+  $node = node_load($item['id']);
+  // note: internal path in l() should not starts with /. [#568792]
+  // refer to http://api.drupal.org/api/function/l/6
+  return l($node->title, "node/{$node->nid}");
+}
+
+function history_rec_related($node_id) {
+  $display_num = variable_get('history_rec_display_num', 5);
+  $items = recommender_top_similarity('history_rec', $node_id, $display_num);
+  $items = array_map('_history_rec_format_node', $items);
+  return $items;
+}
+
+
+function history_rec_recommended($user_id) {
+  if ($user_id == 0) return NULL; // we don't display stuff for anonymous users
+  $display_num = variable_get('history_rec_display_num', 5);
+  $items = recommender_top_prediction('history_rec', $user_id, $display_num);
+  $items = array_map('_history_rec_format_node', $items);
+  return $items;
+}
+
+
+function history_rec_run_recommender() {
+  $enabled_types = variable_get('history_rec_enabled_types', array());
+  if (empty($enabled_types)) {
+    return;
+  }
+
+  // get a list of enabled content types to be used in SQL
+  function _history_rec_wrap_each(&$item) {
+    $item = "'$item'";
+  }
+
+  array_walk($enabled_types, '_history_rec_wrap_each');
+
+  $enabled_types = '('. implode(',', $enabled_types) .')';
+
+  $boost_comments = variable_get('history_rec_boost_comments', 1);
+  $boost_recency = variable_get('history_rec_boost_recency', 1);
+
+  // we use a timestamp in order to make sure the content of the table doesn't change in the calculation
+  $now = time();
+  $days60 = 60*24*60*60;  // seconds in 60 days
+
+  // prepare the users-nodes relationship.
+
+  $weight = $boost_recency ? "POW(2, -($now-h.timestamp)/$days60)" : 1;
+  $history_sql = "SELECT h.uid, h.nid, $weight weight FROM {history} h
+      INNER JOIN {node} n ON h.nid=n.nid
+      WHERE n.type IN $enabled_types AND n.changed<$now AND h.uid<>0";
+  if ($boost_comments) {
+    $weight = $boost_recency ? "POW(2, -($now-MAX(c.timestamp))/$days60)" : 1;
+    $comments_sql = "SELECT c.uid, c.nid, $weight weight FROM {comments} c
+        INNER JOIN {node} n ON c.nid=n.nid
+        WHERE n.type IN $enabled_types AND c.timestamp<$now AND c.uid<>0
+        GROUP BY c.uid, c.nid";
+    $sql = "SELECT uid, nid, SUM(weight) weight FROM ($history_sql UNION ALL $comments_sql) a GROUP BY uid, nid";
+  }
+  else {
+    $sql = $history_sql;
+  }
+	
+  // TODO: might need to do a hack [#510222]
+
+  watchdog("history_rec", "Computing w/ SQL: $sql");
+
+  // pass the view to Recommender API, generate similar nodes and prediction
+  // we used 'lowerbound', so those similarity/prediction lower than 0 will not be displayed.
+  recommender_item2item('history_rec', $sql, 'uid', 'nid', 'weight', array(
+    'missing' => 'zero', 'performance' => 'memory', 'duplicate' => 'remove', 'lowerbound' => 0, 'knn' => 10));
+
+  // compute user similarities.
+  /*recommender_classical("uurec_comments_simnode", $sql, 'uid', 'nid', 'weight', array(
+    'missing' => 'adjusted', 'performance' => 'auto'));*/
+}

@@ -1,0 +1,202 @@
+<?php
+// $Id: remote_file.module,v 1.2 2009/03/14 20:07:32 clemenstolboom Exp $ 
+
+/**
+ * @file Remote File
+ * 
+ * Puts a remote file into Drupals file system.
+ * 
+ * This module gets a remote file and put's it into
+ * the hardcoded path 'remote' into drupal file system and
+ * files table. The filename gets MD5-ed and it's mime-type extension.
+ * 
+ * If for example the file
+ * http://upload.wikimedia.org/wikipedia/.../100px-Golden_coat_of_arms_of_Singapore_cropped.jpg
+ * is requested the file is stored as
+ * files/remote/b2d8bf16ce7967d581c863f310ca94eb.jpeg
+ * 
+ * For the time being this is a good strategy but subdirectories
+ * based on the providers would be a better option.
+ * 
+ * See http://drupal.org/node/328232 for a drupal_execute example
+ */
+
+/**
+ * Implementation of hook_nodeapi()
+ * 
+ * $op==presave
+ *   A field with name like field_remote_***_link is used
+ *   to attach the URL value to field_remote_***_image
+ */
+function remote_file_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+  switch ($op) {
+    case 'presave':
+      foreach ($node as $field => $value) {
+        if (strpos($field, 'field_remote_')===0) {
+          if (preg_match('/_link$/', $field)) {
+            foreach ($value as $index => $link) {
+              $url = $link['url'];
+              $target=preg_replace('/_link$/', '_image', $field);
+              $file=remote_file_get_url($url);
+              if (is_object($file)) {
+                remote_file_cck_attach_file($node, $file->filepath, $target, $index);
+                drupal_set_message('Image attached');
+              }
+            }
+          }
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Attach the given file object to the given CCK field
+ * 
+ * @param $node
+ * @param $filepath
+ *   Path to the file to attach
+ * @param $fieldname
+ *   CCK fieldname to attach to
+ * @param $index
+ *   Index to multiple values
+ *  
+ * @see http://drupal.org/node/328232 for a drupal_execute example
+ */
+function remote_file_cck_attach_file($node, $filepath, $fieldname, $index=0) {
+  $field = content_fields($fieldname, $node->type);
+  //TODO: I'm not sure why we need the filefield validators too
+  $validators = array_merge(filefield_widget_upload_validators($field), imagefield_widget_upload_validators($field));
+  $files_path = filefield_widget_file_path($field);
+  // This path does not have to exists already.
+  _remote_file_recursive_file_create_path($files_path);
+  $file = field_file_save_file($filepath, $validators, $files_path);
+  if (!is_array($node->$fieldname)) {
+    // Make CCK array structure
+    $node->$fieldname=array();
+  }
+  $node->{$fieldname}[$index]=$file; 
+}
+
+/**
+ * Create the path ourselves recursively
+ */
+function _remote_file_recursive_file_create_path($path) {
+  if (!file_check_directory($path, FILE_CREATE_DIRECTORY)) {
+    // Support DOS style
+    $root=str_replace('\\','/',file_directory_path());
+    $path=str_replace('\\','/',$path);
+    // We only do our work from the file system root
+    $roots=explode('/',$root);
+    $paths=explode('/',$path);
+    while (count($roots)) {
+      array_shift($roots);
+      array_shift($paths);
+    }
+    foreach ($paths as $dir) {
+      $root.= '/' . $dir;
+      file_check_directory($root, FILE_CREATE_DIRECTORY);
+    }
+  }
+}
+
+/**
+ * Gets the file given by the url
+ * 
+ * @param $url
+ *   The given url
+ * @return
+ *   FALSE or file object for further processing
+ */
+function remote_file_get_url($url, $temp=TRUE) {
+  $md5_url=md5($url);
+  $error = 'No error';
+  static $urls;
+  if (!isset($urls)) {
+    $urls=array();
+  }
+  if (isset($urls[$md5_url])) {
+    return $urls[$md5_url];
+  }
+  // TODO: Check for appropriate providers like wikipedia.org
+  //$result=parse_url($url);
+  //===
+  //TODO: Only do the request if the file is not already on our server
+  $result=drupal_http_request($url);
+  if (isset($result->error)) {
+    unset($result->data);
+    return $result;
+  }
+  $info=array();
+  $info['filemime']=$result->headers['Content-Type'];
+  $info['filesize']=$result->headers['Content-Length'];
+  $info['data']=$result->data;
+  list($dummy, $ext)=explode('/', $info['filemime']);
+  $file_name = $md5_url . '.' . $ext;
+  $info['filepath']=remote_file_basepath() . '/' . $file_name;
+  $info['filename']=$file_name;
+  $file=remote_file_write_file($info, $temp);
+  if (!is_object($file)) {
+    return $info;
+  }
+  $urls[$md5_url]=$file;
+  return $urls[$md5_url];
+}
+
+/**
+ * Writes the given data to the file system and drupals files table
+ * 
+ * Existing files are overriden.
+ * 
+ * @param array $info
+ *   Info for the file to create
+ * @param $temp
+ *   Indicated whether the file should be temporary saved of permanent
+ * 
+ * @return
+ *   File object or FALSE
+ * 
+ * @see remote_file_basepath()
+ */
+function remote_file_write_file( $info, $temp=FALSE) {
+  $exists = is_file($info['filepath']);
+  if (!$exists) {
+    file_save_data( $info['data'], $info['filepath'], FILE_EXISTS_REPLACE);
+    global $user;
+    $file = (object) array();
+    $file->uid = $user->uid;
+    $file->filename=$info['filename'];
+    $file->filepath=$info['filepath'];
+    $file->filemime=$info['filemime'];
+    $file->filesize=$info['filesize'];
+    if ($temp) {
+      $file->status = FILE_STATUS_TEMPORARY;
+    }
+    else {
+      $file->status = FILE_STATUS_PERMANENT;
+    }
+    $result=drupal_write_record('files', $file);
+    if ($result!==FALSE) {
+      return $file;
+    }
+    return FALSE;
+  }
+  else {
+    $sql="SELECT * FROM {files} WHERE filepath='%s'";
+    return db_fetch_object(db_query($sql, $info['filepath']));
+  }
+}
+
+/**
+ * base path for the file location
+ * 
+ * @return
+ *   path to file location
+ */
+function remote_file_basepath() {
+  $path='remote';
+  $path = file_create_path($path);
+  file_check_directory($path, FILE_CREATE_DIRECTORY);
+  return $path;
+}
+

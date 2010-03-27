@@ -1,0 +1,10 @@
+; $Id: bpv.info,v 1.1.4.2 2009/05/30 02:58:08 weitzman Exp $
+name = Block page visibility
+description = Helper module so developers can define block visibility in a custom function instead of in many textareas on the web.
+core = 6.x
+; Information added by drupal.org packaging script on 2009-05-30
+version = "6.x-1.0"
+core = "6.x"
+project = "bpv"
+datestamp = "1243652417"
+

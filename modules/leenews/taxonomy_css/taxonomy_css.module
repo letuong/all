@@ -1,0 +1,55 @@
+<?php
+	function taxonomy_css_preprocess_page(&$variables, $hook) {
+		//dsm($variables);
+	}
+	
+	function taxonomy_css_init() {
+		$taxonomy_class = 'style-black.css';
+		
+		$parent_id = NULL;
+
+		//If the page is taxonomy page, find the top taxonomy id
+		if (arg(0) == 'taxonomy' && arg(1) == 'term' && is_numeric(arg(2))) {
+			$parent_id = taxonomy_css_top_parent(arg(2));
+		}
+		
+		
+		//If the page is node, then find the top taxonomy id
+		if (arg(0) == 'node' && is_numeric(arg(1))) {
+			$node = node_load(arg(1));
+			if (isset($node->taxonomy)) {
+				$taxo = $node->taxonomy;
+				if (count($taxo) > 0) {
+					$taxonomy = array_shift($taxo);
+					$parent_id = taxonomy_css_top_parent($taxonomy->tid);
+				}
+			}
+		}
+		
+		switch ($parent_id) {
+			case 3:
+				$taxonomy_class = 'style-red.css';
+				break;
+			case 2:
+				$taxonomy_class = 'style-blue.css';
+				break;	
+			case 5:
+				$taxonomy_class = 'style-pink.css';
+				break;			
+			default:
+				break;
+		}
+		
+		drupal_add_css(path_to_theme()."/css/".$taxonomy_class);
+	}
+	
+	function taxonomy_css_top_parent($tid) {
+		$parent_id = taxonomy_get_parents($tid);
+		
+		if (count($parent_id) != 0) {
+			$taxonomy =  array_shift($parent_id);
+			return taxonomy_css_top_parent($taxonomy->tid);
+		} else {
+			return $tid;
+		}
+	}

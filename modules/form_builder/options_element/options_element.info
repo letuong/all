@@ -1,0 +1,11 @@
+; $Id: options_element.info,v 1.1 2008/12/03 19:32:23 quicksketch Exp $
+name = Options element
+description = A custom form element for entering the options in select lists, radios, or checkboxes.
+core = 6.x
+
+; Information added by drupal.org packaging script on 2009-06-20
+version = "6.x-0.6"
+core = "6.x"
+project = "form_builder"
+datestamp = "1245540038"
+

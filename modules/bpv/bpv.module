@@ -1,0 +1,110 @@
+<?php
+// $Id: bpv.module,v 1.1.4.8 2009/05/30 02:58:08 weitzman Exp $
+
+define("BPV_INCLUSIVE", 0);
+define("BPV_EXCLUSIVE", 1);
+
+function bpv_menu() {
+  return array(
+    'admin/settings/bpv' => array(
+      'title' => 'Configure Block Path Visibility',
+      'description' => 'Set the default inclusive/exclusive flag for your blocks.',
+      'access arguments' => array('administer blocks'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('bpv_settings_form'),
+    ),
+  );
+}
+
+function bpv_settings_form($form_state) {
+  if (empty($_POST)) {
+    drupal_set_message(t('<strong>Submitting this form will overwrite your existing page visibility instructions for all blocks and instead call HOOK_bpv_config().</strong>. It is safe to do this multiple times.'), 'warning');
+  }
+  $form = array();
+  $form['bpv_default'] = array(
+    '#type' => 'radios',
+    '#title' => t('Default Block Path Visibility Setting'),
+    '#default_value' =>  variable_get('bpv_default', BPV_EXCLUSIVE),
+    '#options' => array(BPV_INCLUSIVE => t('Inclusive'), BPV_EXCLUSIVE => t('Exclusive')),
+    '#description' => t('Choose "Exclusive" to turn all blocks on by default and use hook_bpv_config to turn them off, use "Inclusive" to turn all blocks off by default and use hook_bpv_config to turn them on.'),
+  );
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+  return $form;
+}
+
+function bpv_settings_form_submit($form, &$form_state) {
+  variable_set('bpv_default', $form_state['values']['bpv_default']);
+  bpv_update_all_blocks();
+  drupal_set_message(t('All blocks are now controlled via <code>HOOK_bpv_config()</code>'));
+}
+
+function bpv_form_alter(&$form, $form_state, $form_id) {
+  if($form_id == 'block_admin_configure') {
+    $form['page_vis_settings']['visibility']['#disabled'] = TRUE;
+    $form['page_vis_settings']['pages']['#disabled'] = TRUE;
+    $form['page_vis_settings']['#description'] = t(
+      '<strong>Page specific visibility is being handled by the !link module. See its README.txt.</strong>', 
+      array('!link' => l(t('Block Page Visibility'), 'admin/settings/bpv'))
+    );
+  }
+}
+
+function bpv_update_all_blocks() {
+  $sql = 'UPDATE blocks SET visibility = 2, pages = CONCAT("<", "?", "php ", "return bpv_is_visible(\'", module, "-", delta, "\'); ", "?", ">") WHERE status=1 AND theme=\'%s\'';
+  // TODO: This should affect whatever theme is currently being edited, not the default theme
+  db_query($sql, variable_get('theme_default', 'garland'));
+}
+
+/**
+ * The workhorse. Calculate whether a given block is visible or not.
+ *
+ * @param string $name 
+ *   Example: user-0
+ * @return boolean
+ */
+function bpv_is_visible($name) {
+  static $block_config = false;
+  
+  $modules = module_implements('bpv_config');
+    
+  if ($block_config === false) {
+    $block_config = array();
+    if (!empty($modules)) {
+      $block_config = module_invoke_all('bpv_config');
+    }
+  }
+  
+  if (isset($block_config[$name])) {
+    $block = $block_config[$name];
+  }
+  else {
+    $block = array(variable_get('bpv_default', BPV_INCLUSIVE), array(), array());
+  }
+  $match = false;
+
+  // Boolean argument trumps the others. Use it if defined.
+  if (isset($block[3])) {
+    $match = $block[3];
+  }
+  
+  if (!$match && isset($block[1]) && $block[1]) {
+    $expr = implode("\n", $block[1]);
+    $match = drupal_match_path(drupal_get_path_alias($_GET['q']), $expr);
+    if (!$match && $path != $_GET['q']) {
+      $match = drupal_match_path($_GET['q'], $expr);
+    }
+  }
+  
+  if (!$match && isset($block[2]) && $node = menu_get_object()) {
+    $match = (array_search($node->type, $block[2]) !== false);
+  }
+
+  $show = ($block[0] xor $match);
+  return $show;
+}
+
+function bpv_disable() {
+  $sql = "UPDATE blocks SET pages = '' WHERE status=1 AND theme='%s'";
+  db_query($sql, variable_get('theme_default', 'garland'));
+  variable_del('bpv_default');
+}

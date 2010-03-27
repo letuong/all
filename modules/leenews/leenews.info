@@ -1,0 +1,9 @@
+; $Id: book.info,v 1.5 2007/07/30 18:20:21 dries Exp $
+name = Lee News
+description = Allows users to structure site pages in a hierarchy or outline.
+package = Lee's Group
+version = VERSION
+core = 6.x
+version = "6.15"
+project = leenews
+

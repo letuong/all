@@ -1,0 +1,387 @@
+<?php
+
+function leenews_load_sources() {
+	$sources = array();
+	$node_ids = db_query('SELECT n.nid FROM {node} n WHERE n.type = "source" AND status = 1;');
+	while ($noid = db_fetch_object($node_ids)) {
+        $node = node_load($noid->nid);
+		$source = array();
+		
+		//Only load the enabled sources.
+		if ($node->field_news_enable[0]['value']==1) {
+			$source['base'] = $node->field_root_url[0]['value'];
+			$source['url'] = $node->field_web_url[0]['value'];
+			
+			$feeds = array();
+			
+			foreach ($node->field_feeds AS $feed) {
+				$feed_lines = explode("|",$feed['value']);
+				//Parse feed line to get taxonomy term ids
+				if (count($feed_lines)==2) {
+					$taxonomies = explode(",",$feed_lines[0]);
+					$feeds[] = array(
+						'taxonomies' => $taxonomies,
+						'url'	 => str_replace("%3D","&",$feed_lines[1]),
+					);
+				}
+			}
+			$source['feeds'] = $feeds;
+			$xpath_rules = array();
+			$xpath_rules['xpath_content'] = $node->field_xpath_content[0]['value']; 
+			if (count($node->field_xpath_images)>0) {
+				if (isset($node->field_xpath_images[0]['value'])) {
+					$xpath_rules['xpath_image'] = $node->field_xpath_images[0]['value'];
+				}
+			}
+			
+			if (count($node->field_xpath_removed_items)>0) {
+				$xpath_removed_items = array();
+				foreach ($node->field_xpath_removed_items AS $xpath_removed_item) {
+					if ($xpath_removed_item['value']!='') {
+						$xpath_removed_items[] = $xpath_removed_item['value'];
+					}
+				}
+				if (count($xpath_removed_items)>0) {
+					$xpath_rules['xpath_remove_items'] = $xpath_removed_items;
+				}
+			}
+			$source['xpath_rules'] = $xpath_rules;
+			
+		}
+		
+		$sources[] = $source;
+    }
+	return $sources;
+}
+
+class cURL {
+var $headers;
+var $user_agent;
+var $compression;
+var $cookie_file;
+var $proxy;
+function cURL($cookies=TRUE,$cookie='cookies.txt',$compression='gzip',$proxy='') {
+$this->headers[] = 'Accept: image/gif, image/x-bitmap, image/jpeg, image/pjpeg';
+$this->headers[] = 'Connection: Keep-Alive';
+$this->headers[] = 'Content-type: application/x-www-form-urlencoded;charset=UTF-8';
+$this->user_agent = 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; .NET CLR 1.0.3705; .NET CLR 1.1.4322; Media Center PC 4.0)';
+$this->compression=$compression;
+$this->proxy=$proxy;
+$this->cookies=$cookies;
+if ($this->cookies == TRUE) $this->cookie($cookie);
+}
+function cookie($cookie_file) {
+if (file_exists($cookie_file)) {
+$this->cookie_file=$cookie_file;
+} else {
+fopen($cookie_file,'w') or $this->error('The cookie file could not be opened. Make sure this directory has the correct permissions');
+$this->cookie_file=$cookie_file;
+fclose($this->cookie_file);
+}
+}
+function get($url) {
+$process = curl_init($url);
+curl_setopt($process, CURLOPT_HTTPHEADER, $this->headers);
+curl_setopt($process, CURLOPT_HEADER, 0);
+curl_setopt($process, CURLOPT_USERAGENT, $this->user_agent);
+if ($this->cookies == TRUE) curl_setopt($process, CURLOPT_COOKIEFILE, $this->cookie_file);
+if ($this->cookies == TRUE) curl_setopt($process, CURLOPT_COOKIEJAR, $this->cookie_file);
+curl_setopt($process,CURLOPT_ENCODING , $this->compression);
+curl_setopt($process, CURLOPT_TIMEOUT, 30);
+if ($this->proxy) curl_setopt($process, CURLOPT_PROXY, $this->proxy);
+curl_setopt($process, CURLOPT_RETURNTRANSFER, 1);
+curl_setopt($process, CURLOPT_FOLLOWLOCATION, 1);
+$return = curl_exec($process);
+curl_close($process);
+return $return;
+}
+function post($url,$data) {
+$process = curl_init($url);
+curl_setopt($process, CURLOPT_HTTPHEADER, $this->headers);
+curl_setopt($process, CURLOPT_HEADER, 1);
+curl_setopt($process, CURLOPT_USERAGENT, $this->user_agent);
+if ($this->cookies == TRUE) curl_setopt($process, CURLOPT_COOKIEFILE, $this->cookie_file);
+if ($this->cookies == TRUE) curl_setopt($process, CURLOPT_COOKIEJAR, $this->cookie_file);
+curl_setopt($process, CURLOPT_ENCODING , $this->compression);
+curl_setopt($process, CURLOPT_TIMEOUT, 30);
+if ($this->proxy) curl_setopt($process, CURLOPT_PROXY, $this->proxy);
+curl_setopt($process, CURLOPT_POSTFIELDS, $data);
+curl_setopt($process, CURLOPT_RETURNTRANSFER, 1);
+curl_setopt($process, CURLOPT_FOLLOWLOCATION, 1);
+curl_setopt($process, CURLOPT_POST, 1);
+$return = curl_exec($process);
+curl_close($process);
+return $return;
+}
+function error($error) {
+echo "<center><div style='width:500px;border: 3px solid #FFEEFF; padding: 3px; background-color: #FFDDFF;font-family: verdana; font-size: 10px'><b>cURL Error</b><br>$error</div></center>";
+die;
+}
+}
+	
+
+	function isAbsoluteLink($link) {
+		return ereg("(http:\/\/)|(https:\/\/).*",$link);
+	}
+	
+	function leenews_cron() {
+		$sources = leenews_load_sources();
+		
+		foreach ($sources AS $key=>$source) {
+			try {
+				leenews_update_news($source);
+			} 
+			catch (Exception $e) {
+				watchdog("News","Unable do read news from the source" . $source['base'] . ". " . $e->getMessage(),array(),WATCHDOG_ERROR );
+			}
+		}
+		
+		watchdog("News","Finished retrieving data from sites.");
+		
+	}
+	
+	
+	function leenews_purify_html($html) {
+		$html = str_replace("\n","",$html);
+		$html = str_replace("<p></p>","",$html);
+		
+		$html = str_replace("]]&gt;","",$html);
+		return _htmlpurifier_process($html,'leenews');
+	}
+	
+	function leenews_nodeapi(&$node, $op, $a3 = NULL, $a4 = NULL) {
+		if ($op == 'view' && $a3==1) {
+			//print_r($node);exit;
+			$node->content['body']['#value'] = strip_tags($node->teaser);
+			$node->teaser = strip_tags($node->teaser);
+		}
+	}
+	
+	function leenews_init(){
+		return;
+		$node = array();
+		$node['type'] = 'news';
+		$node['promote'] = 1;
+		$node['title'] = "Testing100aa10";
+		$node['body'] = 'body moving';
+		$node['field_news_source']['0']['value'] = 'http://www.emm.com.au';
+		$node['field_news_date'] = array(
+			0 => array(
+					'value'  => '2010-02-03 - 11:59:21',
+				),
+			
+		);
+		
+		
+		
+		$node['field_permanent_link']['0']['value'] = 'http://www.emm.com.au';
+		
+		//$node['title'] = 'title';
+		$node = node_submit($node);
+		node_save($node);
+		
+		return;
+		$xpath = array(
+							'xpath_content' 		=> 	"//div[@id='Tin_Chi_Tiet']//div[@class='neo-dtcontent']",
+							'xpath_image'			=>	"//div[@id='Tin_Chi_Tiet']//div[@class='neo-dtcontent']//img",
+							'xpath_remove_items'	=>	array(
+														),
+						);
+		
+		
+$data = leenews_load_news_data('http://dantri.com.vn/c76/s76-381916/ngan-hang-du-thua-khoang-30000-ty-dong-von-kha-dung.htm','http://dantri.com.vn',$xpath);
+		print_r($data);
+	}
+	
+		
+	function leenews_load_news_data($permalink,$base_path,$xpath_rules,$charset_convert=NULL) {
+		$remote_data = NULL;
+		$thumbnail_url = array();
+		$permalink = str_replace('%26','&',$permalink);
+		$permalink = str_replace('%3D','=',$permalink);
+		
+		include_once('simplepie.inc');
+		include_once('idn/idna_convert.class.php');
+		
+		//$data = drupal_http_request($permalink,array('Content-Type'=>'text/html; charset=utf-8'));
+		//$html = $data->data;
+		$cc = new cURL();
+		$html = $cc->get($permalink);
+		$dom = new DOMDocument();
+		@$dom->loadHtml('<?xml encoding="UTF-8">'.$html);
+		$xpath = new DOMXPath($dom);
+		
+		
+		$data = $xpath->evaluate($xpath_rules['xpath_content']);
+		
+	
+		$domElement = $data->item(0);
+		//Remove unused blocks.
+		if (isset($xpath_rules['xpath_remove_items'])) {
+			if (is_array($xpath_rules['xpath_remove_items'])) {
+				foreach ($xpath_rules['xpath_remove_items'] AS $xpath_remove_rule) {
+					$removing_items = $xpath->evaluate($xpath_remove_rule);
+					if ($removing_items->length > 0) {
+						for ($i = 0; $i < $removing_items->length; $i++) {
+							//print_r($removing_items->item(0));
+							$parent = $removing_items->item($i)->parentNode;
+							$parent->removeChild($removing_items->item($i));
+						}
+					}
+				}
+			}
+		}
+		$aTags = $xpath->evaluate($xpath_rules['xpath_image']);
+			//Put absolute path to each image.
+			for ($i = 0; $i < $aTags->length; $i++) {
+				$aTag = $aTags->item($i);
+				$link = $aTag->getAttribute('src');
+				if (!isAbsoluteLink($link)) {
+					$link = $base_path.$link;
+					$aTag->setAttribute('src',$link);
+				}
+				
+				$thumbnail_url[] = $link;
+			}
+		if (!$domElement) {
+			return NULL;
+		}	
+		$remote_data['thumbnail'] = $thumbnail_url[0];
+		
+		$remote_data['body']  = $domElement->ownerDocument->saveXML($domElement);
+		$remote_data['body'] = leenews_purify_html(leenews_strip_attributes($remote_data['body']));
+		return $remote_data;
+	}
+	
+	function leenews_load_news_item($item,$term_ids,$source,$type="news") {
+		$thumbnail_url = '';
+		$permalink = $item->get_permalink();
+		$datetime = $item->get_date('Y-m-j - G:i:s');
+		$title = $item->get_title();
+	
+		//Check if the link existed then skip this step.
+		if (db_result(
+			db_query('SELECT COUNT(*) FROM {content_type_news} WHERE field_permanent_link_value = "%s"',$permalink))
+		){
+			return;
+		}
+		
+		if (isset($source['charset_convert'])) {
+			$data = leenews_load_news_data($permalink,$source['url'],$source['xpath_rules'],$source['charset_convert']);
+		} else {
+			$data = leenews_load_news_data($permalink,$source['url'],$source['xpath_rules']);	
+		} 
+		
+		if ($data) {
+			
+			$node = array();
+			$node['type'] = $type;
+			$node['promote'] = 1;
+			$node['field_news_source']['0']['value'] = $source['url'];
+			$node['field_news_date'] = array(
+				0 => array(
+					'value'  => $datetime,
+				),
+			);
+			$node['field_permanent_link']['0']['value'] = $permalink;
+			
+			if (is_array($term_ids)) {
+				$taxonomies = array();
+				foreach ($term_ids AS $term_id) {
+					$taxo_term = (object)NULL;
+					$taxo_term->tid = $term_id;
+					$taxonomies[$term_id] = $taxo_term;
+				}
+				$node['taxonomy'] = $taxonomies;
+			}
+			$node['body'] = $data['body'];
+			$node['title'] = str_replace('&nbsp;',' ',$title);
+			$node['title'] = str_replace('&quot;',' ',$node['title']);
+			$node = (object)$node;
+			$node = node_submit($node);
+			if ($data['thumbnail'] != '') {
+			  	$remote_file=remote_file_get_url($data['thumbnail']);
+		
+			  	if (isset($remote_file->redirect_url)) {
+					$remote_file=remote_file_get_url($source['base'].$remote_file->redirect_url);
+			  	}
+				  if (is_object($remote_file) && !$remote_file->error) {
+	            	remote_file_cck_attach_file($node, $remote_file->filepath, 'field_news_thumbnail');
+		          }
+			}
+			
+			node_save($node);
+			
+		}
+
+		
+	}
+	
+	function leenews_update_news($source) {
+		
+		include_once('simplepie.inc');
+		include_once('idn/idna_convert.class.php');
+		
+		$url = $source['url'];
+		foreach ($source['feeds']  AS $afeed) {
+			$feed = new SimplePie();
+			// Use the URL that was passed to the page in SimplePie
+			$feed->set_feed_url($afeed['url']);
+
+			// Initialize the whole SimplePie object.  Read the feed, process it, parse it, cache it, and 
+			// all that other good stuff.  The feed's information will not be available to SimplePie before 
+			// this is called.
+			$success = $feed->init();
+
+			// We'll make sure that the right content type and character encoding gets set automatically.
+			// This function will grab the proper character encoding, as well as set the content type to text/html.
+			$feed->handle_content_type();
+			
+			if ($success) {
+				foreach ($feed->get_items() AS $item) {
+						leenews_load_news_item($item,$afeed['taxonomies'],$source);
+				}
+			} else {
+				echo $feed->error;
+			}
+		}
+	}
+	
+	function leenews_strip_attributes($html) {
+		$html = strip_tags($html,'<p><a><img><table><tr><th><td><span><strong><em>');
+		$html = preg_replace('/<(p|span|tr|td)[^>]*>/', '<\1>', $html);
+		$html = str_replace('&#13;','',$html);
+		
+		return $html;
+	}
+	
+	function leenews_list_nodes_term() {
+		
+		$cols = 2;
+		$blocks = array();
+		$divs = array();
+		$tree_terms = taxonomy_get_tree(2);
+		$count = 0;
+		foreach ($tree_terms AS $term) {
+			
+			$title = '<h2>' . $term->name . '</h2>';
+			
+			$view = views_embed_view('news_summary', 'block_1', $term->tid);
+			
+			if (trim($view) != '') {
+				$count++;
+				$block = '<div class="section">' . $title . views_embed_view('news_summary', 'block_1', $term->tid) . '</div>';
+				$blocks[] = $block;
+				$divs[$count % $cols] .= $block;
+			}
+			
+		}
+		
+		print '<div class="clearfix news-cols">';
+		
+		for ($i=0; $i<$cols; $i++) {
+			print '<div class="news-col col'.($i+1).'"><div class="news-inner">' . $divs[$i] . '</div></div>';
+		}
+		
+		print '</div>';
+	}

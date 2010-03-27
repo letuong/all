@@ -1,0 +1,14 @@
+#header ul.menu li.active-trail {
+	background:#9C162E;
+	background-image: -moz-linear-gradient(100% 100% 90deg, #9C162E, #B9495D);
+	background-image: -webkit-gradient(linear, 0% 0%, 0% 95%, from(rgba(185, 73, 93, 1)), to(rgba(156, 22, 46, 0)));
+}			
+
+#header ul.menu li.active-trail a {
+	color:#FFF;
+}
+
+#header ul.menu li.active-trail div.menu-wrapper {
+	background:#9C162E;
+	z-index:1;
+}

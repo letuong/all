@@ -1,0 +1,13 @@
+; $Id: form_builder.info,v 1.2 2009/05/14 05:21:17 quicksketch Exp $
+name = Form builder
+description = Form building framework.
+dependencies[] = jquery_ui
+dependencies[] = options_element
+core = 6.x
+
+; Information added by drupal.org packaging script on 2009-06-20
+version = "6.x-0.6"
+core = "6.x"
+project = "form_builder"
+datestamp = "1245540038"
+

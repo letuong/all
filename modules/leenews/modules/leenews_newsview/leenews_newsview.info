@@ -1,0 +1,7 @@
+name = Lee News View
+description = Format view nodes in the News way
+package = Lee's Group
+version = VERSION
+core = 6.x
+version = "6.15"
+project = leenews_newsview

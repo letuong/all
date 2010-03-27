@@ -1,0 +1,11 @@
+; $Id: form_builder_examples.info,v 1.1 2008/12/03 19:32:23 quicksketch Exp $
+name = Form builder examples
+description = Form builder support for CCK, Webform, and Profile modules.
+core = 6.x
+dependencies[] = form_builder
+; Information added by drupal.org packaging script on 2009-06-20
+version = "6.x-0.6"
+core = "6.x"
+project = "form_builder"
+datestamp = "1245540038"
+
