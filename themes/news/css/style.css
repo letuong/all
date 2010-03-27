@@ -329,9 +329,31 @@ div.node .content img {
 	padding:0 5px;
 }
 
-.section {
+.news-inner .section {
 	margin-bottom:35px;
 }
 
+.news-inner ul {
+	list-style:none;
+	margin:0;
+	padding:0;
+}
 
+.news-summary p{
+	padding:5px 0;
+	margin:0;
+}
+
+.news-inner h2 {
+	padding:0;
+	margin:0;
+	font-size:1.7em;
+	font-family:Constantia,Cambria,Times,serif;
+	font-weight:bold;
+}
+
+.news-other {
+	text-transform:uppercase;
+	color:#666;
+	font-size:0.9em;
 }
