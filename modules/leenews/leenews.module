@@ -376,7 +376,6 @@ $data = leenews_load_news_data('http://dantri.com.vn/c76/s76-381916/ngan-hang-du
 			}
 			
 		}
-		
 		print '<div class="clearfix news-cols">';
 		
 		for ($i=0; $i<$cols; $i++) {
