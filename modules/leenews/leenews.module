@@ -382,6 +382,5 @@ $data = leenews_load_news_data('http://dantri.com.vn/c76/s76-381916/ngan-hang-du
 		for ($i=0; $i<$cols; $i++) {
 			print '<div class="news-col col'.($i+1).'"><div class="news-inner">' . $divs[$i] . '</div></div>';
 		}
-		
 		print '</div>';
 	}
