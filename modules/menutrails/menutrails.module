@@ -452,7 +452,7 @@ function phptemplate_links($links, $attributes = array('class' => 'links')) {
         $class .= ' active';
       }
       
-      if (isset($link['href'])) {
+      if (isset($link['href']) && isset($link['attributes']['class'])) {
         // add active class for containing <li> and <a> if active-trail is set on the link itself
         if (strpos($link['attributes']['class'], 'active-trail') !== FALSE && strpos($class, 'active') === FALSE) {
            $class .= ' active';

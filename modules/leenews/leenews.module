@@ -359,7 +359,7 @@ $data = leenews_load_news_data('http://dantri.com.vn/c76/s76-381916/ngan-hang-du
 		
 		$cols = 2;
 		$blocks = array();
-		$divs = array();
+		$divs = array('','','');
 		$tree_terms = taxonomy_get_tree(2);
 		$count = 0;
 		foreach ($tree_terms AS $term) {
