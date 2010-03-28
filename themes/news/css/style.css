@@ -3,6 +3,11 @@ body {
 	background:#F7F7F7;
 }
 
+a {
+	color:#145077;
+	text-decoration:none;
+}
+
 /* typography.css */
 html {font-size:100.01%;}
 body {font-size:75%;}
@@ -343,13 +348,17 @@ div.node .content img {
 	padding:5px 0;
 	margin:0;
 }
+.news-summary a {
+	font-weight:bold;
+	font-family:Constantia,Cambria,Times,serif;
+}
 
 .news-inner h2 {
 	padding:0;
 	margin:0;
-	font-size:1.7em;
+	font-size:1.5em;
 	font-family:Constantia,Cambria,Times,serif;
-	font-weight:bold;
+	text-transform:uppercase;
 }
 
 .news-other {
@@ -357,3 +366,5 @@ div.node .content img {
 	color:#666;
 	font-size:0.9em;
 }
+
+
